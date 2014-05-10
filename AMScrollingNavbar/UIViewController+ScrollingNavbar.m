@@ -37,6 +37,15 @@
 - (void)setDelayDistance:(float)delayDistance { objc_setAssociatedObject(self, @selector(delayDistance), [NSNumber numberWithFloat:delayDistance], OBJC_ASSOCIATION_RETAIN); }
 - (float)delayDistance { return [objc_getAssociatedObject(self, @selector(delayDistance)) floatValue]; }
 
+- (void)setDisplayLink:(CADisplayLink*)displayLink { objc_setAssociatedObject(self, @selector(displayLink), displayLink, OBJC_ASSOCIATION_RETAIN); }
+- (CADisplayLink*)displayLink { return objc_getAssociatedObject(self, @selector(displayLink)); }
+
+- (void)setTimestamp:(float)timestamp { objc_setAssociatedObject(self, @selector(timestamp), [NSNumber numberWithFloat:timestamp], OBJC_ASSOCIATION_RETAIN); }
+- (float)timestamp { return [objc_getAssociatedObject(self, @selector(timestamp)) floatValue]; }
+
+- (void)setMaxDelta:(float)maxDelta { objc_setAssociatedObject(self, @selector(maxDelta), [NSNumber numberWithFloat:maxDelta], OBJC_ASSOCIATION_RETAIN); }
+- (float)maxDelta { return [objc_getAssociatedObject(self, @selector(maxDelta)) floatValue]; }
+
 
 - (void)followScrollView:(UIView*)scrollableView
 {
@@ -99,6 +108,7 @@
 
 - (void)didBecomeActive:(id)sender
 {
+    [self stopTimerAnimate];
 	[self showNavbar];
 }
 
@@ -152,6 +162,8 @@
 
 - (void)showNavBarAnimated:(BOOL)animated
 {
+    [self stopTimerAnimate];
+    
 	NSTimeInterval interval = animated ? 0.2 : 0;
 	if (self.scrollableView != nil) {
 		if (self.collapsed) {
@@ -189,6 +201,10 @@
 	
 	float delta = self.lastContentOffset - translation.y;
 	self.lastContentOffset = translation.y;
+    
+//    if ([gesture state] == UIGestureRecognizerStateBegan) {
+//        [self stopTimerAnimate];
+//    }
 	
 	[self scrollWithDelta:0.3*delta];
     
@@ -306,34 +322,60 @@
     
 	// Collapse
 	if (collapse && !self.collapsed) {
-		[UIView animateWithDuration:0.2 animations:^{
-			CGRect frame;
-			frame = self.navigationController.navigationBar.frame;
-			CGFloat delta = frame.origin.y + self.deltaLimit;
-			frame.origin.y = MAX(-self.deltaLimit, frame.origin.y - delta);
-			self.navigationController.navigationBar.frame = frame;
-			
-			self.expanded = NO;
-			self.collapsed = YES;
-			self.delayDistance = self.maxDelay;
-			
-			[self updateSizingWithDelta:delta];
-		}];
+        [self animateWithExpanded:NO];
 	} else if (expand && !self.expanded) {
 		// Expand
-		[UIView animateWithDuration:0.2 animations:^{
-			CGRect frame;
-			frame = self.navigationController.navigationBar.frame;
-			CGFloat delta = frame.origin.y - self.statusBar;
-			frame.origin.y = MIN(20, frame.origin.y - delta);
-			self.navigationController.navigationBar.frame = frame;
-			
-			self.expanded = YES;
-			self.collapsed = NO;
-			
-			[self updateSizingWithDelta:delta];
-		}];
+        [self animateWithExpanded:YES];
 	}
+}
+
+- (void)animateWithExpanded:(BOOL)expanded
+{
+    [self stopTimerAnimate];
+    
+    CGRect frame = self.navigationController.navigationBar.frame;
+    if (expanded) {
+        self.maxDelta = frame.origin.y - self.statusBar;
+    } else {
+        self.maxDelta = frame.origin.y + self.deltaLimit;
+    }
+    
+    // Using CADisplayLink to schedule animation timer
+    self.displayLink = [CADisplayLink displayLinkWithTarget:self
+                                                   selector:@selector(animateWithTimer:)];
+    [self.displayLink addToRunLoop:[NSRunLoop currentRunLoop]
+                           forMode:NSRunLoopCommonModes];
+    self.timestamp = -1.0;
+}
+
+- (void)animateWithTimer:(id)sender
+{
+    if (self.timestamp < 0) {
+//        self.timestamp = CACurrentMediaTime();
+        self.timestamp = self.displayLink.timestamp;
+        return;
+    }
+//    float dt = CACurrentMediaTime() - self.timestamp;
+    float dt = self.displayLink.timestamp - self.timestamp;
+
+    float delta;
+    if (ABS(self.maxDelta) < 1.0) {
+        delta = self.maxDelta;
+        [self stopTimerAnimate];
+    } else {
+        delta = self.maxDelta * MIN(1.0, 6.0 * dt);
+    }
+    
+    self.maxDelta -= delta;
+    [self scrollWithDelta:delta];
+}
+
+- (void)stopTimerAnimate
+{
+    if (self.displayLink) {
+        [self.displayLink invalidate];
+        self.displayLink = nil;
+    }
 }
 
 - (void)updateSizingWithDelta:(CGFloat)delta
