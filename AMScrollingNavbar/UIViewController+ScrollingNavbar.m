@@ -190,12 +190,12 @@
 	float delta = self.lastContentOffset - translation.y;
 	self.lastContentOffset = translation.y;
 	
-	[self scrollWithDelta:delta];
-	
+	[self scrollWithDelta:0.3*delta];
+    
 	if ([gesture state] == UIGestureRecognizerStateEnded) {
 		// Reset the nav bar if the scroll is partial
-		self.lastContentOffset = 0;
-		[self checkForPartialScroll];
+		[self checkForPartialCollapse:(translation.y < 0)];
+        self.lastContentOffset = 0;
 	}
 }
 
@@ -300,26 +300,12 @@
     return [[self scrollView] contentSize];
 }
 
-- (void)checkForPartialScroll
+- (void)checkForPartialCollapse:(BOOL)collapse
 {
-	CGFloat pos = self.navigationController.navigationBar.frame.origin.y;
-	
-	// Get back down
-	if (pos >= -2) {
-		[UIView animateWithDuration:0.2 animations:^{
-			CGRect frame;
-			frame = self.navigationController.navigationBar.frame;
-			CGFloat delta = frame.origin.y - self.statusBar;
-			frame.origin.y = MIN(20, frame.origin.y - delta);
-			self.navigationController.navigationBar.frame = frame;
-			
-			self.expanded = YES;
-			self.collapsed = NO;
-			
-			[self updateSizingWithDelta:delta];
-		}];
-	} else {
-		// And back up
+    BOOL expand = !collapse;
+    
+	// Collapse
+	if (collapse && !self.collapsed) {
 		[UIView animateWithDuration:0.2 animations:^{
 			CGRect frame;
 			frame = self.navigationController.navigationBar.frame;
@@ -330,6 +316,20 @@
 			self.expanded = NO;
 			self.collapsed = YES;
 			self.delayDistance = self.maxDelay;
+			
+			[self updateSizingWithDelta:delta];
+		}];
+	} else if (expand && !self.expanded) {
+		// Expand
+		[UIView animateWithDuration:0.2 animations:^{
+			CGRect frame;
+			frame = self.navigationController.navigationBar.frame;
+			CGFloat delta = frame.origin.y - self.statusBar;
+			frame.origin.y = MIN(20, frame.origin.y - delta);
+			self.navigationController.navigationBar.frame = frame;
+			
+			self.expanded = YES;
+			self.collapsed = NO;
 			
 			[self updateSizingWithDelta:delta];
 		}];
@@ -363,8 +363,11 @@
 	}
     
 	// Change the alpha channel of every item on the navbr. The overlay will appear, while the other objects will disappear, and vice versa
-	float alpha = (frame.origin.y + self.deltaLimit) / frame.size.height;
+    float x = 1.0 - (frame.origin.y + self.deltaLimit) / frame.size.height;
+	float alpha = MIN(MAX(0, 1.0 - 2*x), 1.0);
+
 	[self.overlay setAlpha:1 - alpha];
+
 	[self.navigationItem.leftBarButtonItems enumerateObjectsUsingBlock:^(UIBarButtonItem* obj, NSUInteger idx, BOOL *stop) {
 		obj.customView.alpha = alpha;
 	}];
