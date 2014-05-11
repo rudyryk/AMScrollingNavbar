@@ -49,23 +49,31 @@
 - (void)setAnimateAlpha:(BOOL)animateAlpha { objc_setAssociatedObject(self, @selector(animateAlpha), [NSNumber numberWithBool:animateAlpha], OBJC_ASSOCIATION_RETAIN); }
 - (BOOL)animateAlpha {	return [objc_getAssociatedObject(self, @selector(animateAlpha)) boolValue]; }
 
-static float kPanGestureSensitivity = 0.3;
-static float kAnimationSpeedCoeff = 15.0;
+- (void)setTitleFrame:(CGRect)titleFrame { objc_setAssociatedObject(self, @selector(titleFrame), [NSValue valueWithCGRect:titleFrame], OBJC_ASSOCIATION_RETAIN); }
+- (CGRect)titleFrame {	return [objc_getAssociatedObject(self, @selector(titleFrame)) CGRectValue]; }
+
+static float kPanGestureSensitivity = 1.0;
+static float kAnimationSpeedCoeff = 20.0;
 static float kAnimationOffsetThreshold = 1.0;
 
 
 - (void)followScrollView:(UIView*)scrollableView
 {
-	[self followScrollView:scrollableView withDelay:0];
+	[self followScrollView:scrollableView withDelay:0 withScaleTitle:YES];
 }
 
-- (void)followScrollView:(UIView*)scrollableView withDelay:(float)delay
+- (void)followScrollView:(UIView*)scrollableView withDelay:(float)delay withScaleTitle:(BOOL)scaleTitle
 {
 	self.scrollableView = scrollableView;
-	
+    
+    if (scaleTitle) {
+        self.titleFrame = self.navigationItem.titleView.frame;
+    } else {
+        self.titleFrame = CGRectZero;
+    }
+    
 	self.panGesture = [[UIPanGestureRecognizer alloc] initWithTarget:self action:@selector(handlePan:)];
 	[self.panGesture setMaximumNumberOfTouches:1];
-	
 	[self.panGesture setDelegate:self];
 	[self.scrollableView addGestureRecognizer:self.panGesture];
 	
@@ -100,7 +108,7 @@ static float kAnimationOffsetThreshold = 1.0;
 											   object:nil];
 	
 	self.maxDelay = delay;
-	self.delayDistance = delay;
+	self.delayDistance = 0;
 }
 
 - (void)stopFollowingScrollView
@@ -225,9 +233,22 @@ static float kAnimationOffsetThreshold = 1.0;
     if ([gesture state] == UIGestureRecognizerStateBegan) {
         [self stopAnimateWithTimer];
         self.animateAlpha = YES;
+        if (self.collapsed) {
+            self.delayDistance = self.maxDelay;
+        }
     }
-	
-	[self scrollWithDelta:kPanGestureSensitivity * delta];
+    
+    if (self.delayDistance > 0) {
+        if (self.contentOffset.y < 0) {
+            self.delayDistance = 0;
+        } else {
+            self.delayDistance += delta;
+        }
+    }
+    
+	if (delta && self.delayDistance <= 0) {
+        [self scrollWithDelta:kPanGestureSensitivity * delta];
+    }
     
 	if ([gesture state] == UIGestureRecognizerStateEnded) {
 		// Continue expand/collapse if the scroll is partial
@@ -247,7 +268,7 @@ static float kAnimationOffsetThreshold = 1.0;
 		}
         
         // Prevents the navbar from moving during the 'rubberband' scroll
-        if ([self contentoffset].y < 0) {
+        if ([self contentOffset].y < 0) {
             return;
         }
 		if (self.expanded) {
@@ -271,7 +292,7 @@ static float kAnimationOffsetThreshold = 1.0;
         [[self scrollView] setShowsVerticalScrollIndicator:NO];
         
         [self updateSizingWithDelta:delta];
-        [self restoreContentoffset:delta];
+        [self restoreContentOffset:delta];
 	}
 	else if (delta < 0) {
 		if (self.expanded) {
@@ -279,18 +300,13 @@ static float kAnimationOffsetThreshold = 1.0;
 			return;
 		}
         // Prevents the navbar from moving during the 'rubberband' scroll
-        if ([self contentoffset].y + self.scrollableView.frame.size.height > [self contentSize].height) {
+        if ([self contentOffset].y + self.scrollableView.frame.size.height > [self contentSize].height) {
             return;
         }
 		if (self.collapsed) {
             self.collapsed = NO;
         }
 		
-		self.delayDistance += delta;
-		if (self.delayDistance > 0) {
-			return;
-		}
-				
 		if (frame.origin.y - delta > self.statusBar) {
 			delta = frame.origin.y - self.statusBar;
 		}
@@ -306,7 +322,7 @@ static float kAnimationOffsetThreshold = 1.0;
         [[self scrollView] setShowsVerticalScrollIndicator:NO];
         
         [self updateSizingWithDelta:delta];
-        [self restoreContentoffset:delta];
+        [self restoreContentOffset:delta];
 	}
 }
 
@@ -321,14 +337,16 @@ static float kAnimationOffsetThreshold = 1.0;
     return scroll;
 }
 
-- (void)restoreContentoffset:(float)delta
+- (void)restoreContentOffset:(float)delta
 {
     // Hold the scroll steady until the navbar appears/disappears
-    CGPoint offset = [[self scrollView] contentOffset];
-    [[self scrollView] setContentOffset:(CGPoint){offset.x, offset.y - delta}];
+    if (!self.animationTimer) {
+        CGPoint offset = [[self scrollView] contentOffset];
+        [[self scrollView] setContentOffset:(CGPoint){offset.x, offset.y - delta}];
+    }
 }
 
-- (CGPoint)contentoffset
+- (CGPoint)contentOffset
 {
     return [[self scrollView] contentOffset];
 }
@@ -340,20 +358,23 @@ static float kAnimationOffsetThreshold = 1.0;
 
 - (void)checkForPartialCollapse:(BOOL)collapse
 {
-    BOOL expand = !collapse;
-    
-	// Collapse
-	if (collapse && !self.collapsed) {
-        [self startAnimateWithTimerExpand:NO animateAlpha:YES];
-	} else if (expand && !self.expanded) {
-		// Expand
-        [self startAnimateWithTimerExpand:YES animateAlpha:YES];
-	}
+    if (!self.collapsed && !self.expanded) {
+        // Collapse
+        if (collapse) {
+            [self startAnimateWithTimerExpand:NO animateAlpha:YES];
+        } else {
+            // Expand
+            [self startAnimateWithTimerExpand:YES animateAlpha:YES];
+        }
+    }
 }
 
 - (void)startAnimateWithTimerExpand:(BOOL)expand animateAlpha:(BOOL)animateAlpha
 {
     [self stopAnimateWithTimer];
+    
+    self.delayDistance = 0;
+    self.animateAlpha = animateAlpha;
     
     CGRect frame = self.navigationController.navigationBar.frame;
     if (expand) {
@@ -361,8 +382,6 @@ static float kAnimationOffsetThreshold = 1.0;
     } else {
         self.animationDelta = frame.origin.y + self.deltaLimit;
     }
-    
-    self.animateAlpha = animateAlpha;
     
     // Using CADisplayLink to schedule animation timer
     self.animationTimer = [CADisplayLink displayLinkWithTarget:self
@@ -435,7 +454,7 @@ static float kAnimationOffsetThreshold = 1.0;
     float x = 1.0 - (frame.origin.y + self.deltaLimit) / frame.size.height;
 	float alpha = MIN(MAX(0, 1.0 - 2.0 * x), 1.0);
 
-	[self.overlay setAlpha:1 - alpha];
+//	[self.overlay setAlpha:1 - alpha];
     self.overlay.userInteractionEnabled = (alpha < 1.0);
     
 //    NSLog(@"[AMScrollingNavbarViewController] alpha: %f", alpha);
@@ -450,7 +469,11 @@ static float kAnimationOffsetThreshold = 1.0;
         }];
         self.navigationItem.rightBarButtonItem.customView.alpha = alpha;
         self.navigationItem.titleView.alpha = alpha;
-        self.navigationController.navigationBar.tintColor = [self.navigationController.navigationBar.tintColor colorWithAlphaComponent:alpha];
+//        self.navigationController.navigationBar.tintColor = [self.navigationController.navigationBar.tintColor colorWithAlphaComponent:alpha];
+    }
+    
+    if (!CGRectIsNull(self.titleFrame)) {
+        self.navigationItem.titleView.frame = CGRectApplyAffineTransform(self.titleFrame, CGAffineTransformMakeScale(alpha, alpha));
     }
 }
 

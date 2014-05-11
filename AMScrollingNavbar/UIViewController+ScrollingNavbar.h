@@ -22,7 +22,7 @@
  * @param scrollableView The UIView where the scrolling is performed.
  * @param delay The delay of the downward scroll gesture
  */
-- (void)followScrollView:(UIView*)scrollableView withDelay:(float)delay;
+- (void)followScrollView:(UIView*)scrollableView withDelay:(float)delay withScaleTitle:(BOOL)scaleTitle;
 
 /** Scrolling init method
  *
