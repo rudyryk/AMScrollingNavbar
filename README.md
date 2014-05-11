@@ -6,7 +6,7 @@ AMScrollingNavbar
 [![Analytics](https://ga-beacon.appspot.com/UA-42282237-8/AMScrollingNavbar/README)](https://github.com/igrigorik/ga-beacon)
 
 Scrollable UINavigationBar that follows the scrolling of a UIScrollView or similar view (e.g. UITableView or UIWebView). 
-It works like the navigation bar in Chrome or Facebook's app for iOS7.  
+It works like the navigation bar in Chrome or Facebook's app for iOS7.
 
 I also wrote about this control in [this article](http://andreamazz.github.io/blog/2014/02/01/amscrollingnavbar-creating-a-cocoapod/)
 
@@ -39,9 +39,9 @@ To enable the scrolling effect you simply need to call followScrollView: providi
 ```objc
 [self followScrollView:self.scrollView];
 ```
-You can also set a delay (in points) for the gesture that reveals the navigation bar.
+You can also set a delay (in points) for the gesture that reveals the navigation bar and enable/disable title view scale feature:
 ```objc
-[self followScrollView:self.scrollView withDelay:60];
+[self followScrollView:self.scrollView withDelay:60 withScaleTitle:YES];
 ```
 
 Make sure to have a ```barTintColor``` for your ```UINavigationBar```, or you won't see the fade-in and fade-out effects.
