@@ -37,14 +37,18 @@
 - (void)setDelayDistance:(float)delayDistance { objc_setAssociatedObject(self, @selector(delayDistance), [NSNumber numberWithFloat:delayDistance], OBJC_ASSOCIATION_RETAIN); }
 - (float)delayDistance { return [objc_getAssociatedObject(self, @selector(delayDistance)) floatValue]; }
 
-- (void)setDisplayLink:(CADisplayLink*)displayLink { objc_setAssociatedObject(self, @selector(displayLink), displayLink, OBJC_ASSOCIATION_RETAIN); }
-- (CADisplayLink*)displayLink { return objc_getAssociatedObject(self, @selector(displayLink)); }
+- (void)setAnimationTimer:(CADisplayLink*)animationTimer { objc_setAssociatedObject(self, @selector(animationTimer), animationTimer, OBJC_ASSOCIATION_RETAIN); }
+- (CADisplayLink*)animationTimer { return objc_getAssociatedObject(self, @selector(animationTimer)); }
 
-- (void)setTimestamp:(float)timestamp { objc_setAssociatedObject(self, @selector(timestamp), [NSNumber numberWithFloat:timestamp], OBJC_ASSOCIATION_RETAIN); }
-- (float)timestamp { return [objc_getAssociatedObject(self, @selector(timestamp)) floatValue]; }
+- (void)setAnimationTimestamp:(float)animationTimestamp { objc_setAssociatedObject(self, @selector(animationTimestamp), [NSNumber numberWithFloat:animationTimestamp], OBJC_ASSOCIATION_RETAIN); }
+- (float)animationTimestamp { return [objc_getAssociatedObject(self, @selector(animationTimestamp)) floatValue]; }
 
-- (void)setMaxDelta:(float)maxDelta { objc_setAssociatedObject(self, @selector(maxDelta), [NSNumber numberWithFloat:maxDelta], OBJC_ASSOCIATION_RETAIN); }
-- (float)maxDelta { return [objc_getAssociatedObject(self, @selector(maxDelta)) floatValue]; }
+- (void)setAnimationDelta:(float)animationDelta { objc_setAssociatedObject(self, @selector(animationDelta), [NSNumber numberWithFloat:animationDelta], OBJC_ASSOCIATION_RETAIN); }
+- (float)animationDelta { return [objc_getAssociatedObject(self, @selector(animationDelta)) floatValue]; }
+
+static float kPanGestureSensitivity = 0.3;
+static float kAnimationSpeedCoeff = 6.0;
+static float kAnimationOffsetThreshold = 1.0;
 
 
 - (void)followScrollView:(UIView*)scrollableView
@@ -108,7 +112,7 @@
 
 - (void)didBecomeActive:(id)sender
 {
-    [self stopTimerAnimate];
+    [self stopAnimateWithTimer];
 	[self showNavbar];
 }
 
@@ -162,21 +166,17 @@
 
 - (void)showNavBarAnimated:(BOOL)animated
 {
-    [self stopTimerAnimate];
+    [self stopAnimateWithTimer];
     
 	NSTimeInterval interval = animated ? 0.2 : 0;
 	if (self.scrollableView != nil) {
-		if (self.collapsed) {
-			CGRect rect = [self scrollView].frame;
-			rect.origin.y = 0;
-            [self scrollView].frame = rect;
-			[UIView animateWithDuration:interval animations:^{
-				self.lastContentOffset = 0;
-				[self scrollWithDelta:-self.navbarHeight];
-			}];
-		} else {
-			[self updateNavbarAlpha:self.navbarHeight];
-		}
+        CGRect rect = [self scrollView].frame;
+        rect.origin.y = 0;
+        [self scrollView].frame = rect;
+        [UIView animateWithDuration:interval animations:^{
+            self.lastContentOffset = 0;
+            [self scrollWithDelta:-self.navbarHeight];
+        }];
 	}
 }
 
@@ -202,11 +202,11 @@
 	float delta = self.lastContentOffset - translation.y;
 	self.lastContentOffset = translation.y;
     
-//    if ([gesture state] == UIGestureRecognizerStateBegan) {
-//        [self stopTimerAnimate];
-//    }
+    if ([gesture state] == UIGestureRecognizerStateBegan) {
+        [self stopAnimateWithTimer];
+    }
 	
-	[self scrollWithDelta:0.3*delta];
+	[self scrollWithDelta:kPanGestureSensitivity * delta];
     
 	if ([gesture state] == UIGestureRecognizerStateEnded) {
 		// Reset the nav bar if the scroll is partial
@@ -240,7 +240,9 @@
 		frame.origin.y = MAX(-self.deltaLimit, frame.origin.y - delta);
 		self.navigationController.navigationBar.frame = frame;
 		
-		if (frame.origin.y == -self.deltaLimit) {
+        
+		if (ABS(frame.origin.y + self.deltaLimit) < kAnimationOffsetThreshold) {
+            frame.origin.y = -self.deltaLimit;
 			self.collapsed = YES;
 			self.expanded = NO;
 			self.delayDistance = self.maxDelay;
@@ -273,10 +275,11 @@
 		if (frame.origin.y - delta > self.statusBar) {
 			delta = frame.origin.y - self.statusBar;
 		}
-		frame.origin.y = MIN(20, frame.origin.y - delta);
+		frame.origin.y = MIN(self.statusBar/* 20? */, frame.origin.y - delta);
 		self.navigationController.navigationBar.frame = frame;
 		
-		if (frame.origin.y == self.statusBar) {
+		if (ABS(frame.origin.y - self.statusBar) < kAnimationOffsetThreshold) {
+            frame.origin.y = self.statusBar;
 			self.expanded = YES;
 			self.collapsed = NO;
 		}
@@ -322,60 +325,59 @@
     
 	// Collapse
 	if (collapse && !self.collapsed) {
-        [self animateWithExpanded:NO];
+        [self startAnimateWithTimerExpand:NO];
 	} else if (expand && !self.expanded) {
 		// Expand
-        [self animateWithExpanded:YES];
+        [self startAnimateWithTimerExpand:YES];
 	}
 }
 
-- (void)animateWithExpanded:(BOOL)expanded
+- (void)startAnimateWithTimerExpand:(BOOL)expand
 {
-    [self stopTimerAnimate];
+    [self stopAnimateWithTimer];
     
     CGRect frame = self.navigationController.navigationBar.frame;
-    if (expanded) {
-        self.maxDelta = frame.origin.y - self.statusBar;
+    if (expand) {
+        self.animationDelta = frame.origin.y - self.statusBar;
     } else {
-        self.maxDelta = frame.origin.y + self.deltaLimit;
+        self.animationDelta = frame.origin.y + self.deltaLimit;
     }
     
     // Using CADisplayLink to schedule animation timer
-    self.displayLink = [CADisplayLink displayLinkWithTarget:self
-                                                   selector:@selector(animateWithTimer:)];
-    [self.displayLink addToRunLoop:[NSRunLoop currentRunLoop]
-                           forMode:NSRunLoopCommonModes];
-    self.timestamp = -1.0;
+    self.animationTimer = [CADisplayLink displayLinkWithTarget:self
+                                                      selector:@selector(updateAnimation:)];
+    [self.animationTimer addToRunLoop:[NSRunLoop currentRunLoop]
+                              forMode:NSRunLoopCommonModes];
+    self.animationTimestamp = -1.0;
 }
 
-- (void)animateWithTimer:(id)sender
+- (void)stopAnimateWithTimer
 {
-    if (self.timestamp < 0) {
-//        self.timestamp = CACurrentMediaTime();
-        self.timestamp = self.displayLink.timestamp;
+    if (self.animationTimer) {
+        [self.animationTimer invalidate];
+        self.animationTimer = nil;
+    }
+}
+
+- (void)updateAnimation:(id)sender
+{
+    if (self.animationTimestamp < 0) {
+        self.animationTimestamp = self.animationTimer.timestamp;
         return;
     }
-//    float dt = CACurrentMediaTime() - self.timestamp;
-    float dt = self.displayLink.timestamp - self.timestamp;
-
+    
+    float dt = self.animationTimer.timestamp - self.animationTimestamp;
     float delta;
-    if (ABS(self.maxDelta) < 1.0) {
-        delta = self.maxDelta;
-        [self stopTimerAnimate];
+    
+    if (ABS(self.animationDelta) < kAnimationOffsetThreshold) {
+        delta = self.animationDelta;
+        [self stopAnimateWithTimer];
     } else {
-        delta = self.maxDelta * MIN(1.0, 6.0 * dt);
+        delta = self.animationDelta * MIN(1.0, kAnimationSpeedCoeff * dt);
     }
     
-    self.maxDelta -= delta;
+    self.animationDelta -= delta;
     [self scrollWithDelta:delta];
-}
-
-- (void)stopTimerAnimate
-{
-    if (self.displayLink) {
-        [self.displayLink invalidate];
-        self.displayLink = nil;
-    }
 }
 
 - (void)updateSizingWithDelta:(CGFloat)delta
