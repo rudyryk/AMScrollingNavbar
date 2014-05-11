@@ -46,8 +46,11 @@
 - (void)setAnimationDelta:(float)animationDelta { objc_setAssociatedObject(self, @selector(animationDelta), [NSNumber numberWithFloat:animationDelta], OBJC_ASSOCIATION_RETAIN); }
 - (float)animationDelta { return [objc_getAssociatedObject(self, @selector(animationDelta)) floatValue]; }
 
+- (void)setAnimateAlpha:(BOOL)animateAlpha { objc_setAssociatedObject(self, @selector(animateAlpha), [NSNumber numberWithBool:animateAlpha], OBJC_ASSOCIATION_RETAIN); }
+- (BOOL)animateAlpha {	return [objc_getAssociatedObject(self, @selector(animateAlpha)) boolValue]; }
+
 static float kPanGestureSensitivity = 0.3;
-static float kAnimationSpeedCoeff = 6.0;
+static float kAnimationSpeedCoeff = 15.0;
 static float kAnimationOffsetThreshold = 1.0;
 
 
@@ -166,18 +169,35 @@ static float kAnimationOffsetThreshold = 1.0;
 
 - (void)showNavBarAnimated:(BOOL)animated
 {
-    [self stopAnimateWithTimer];
-    
-	NSTimeInterval interval = animated ? 0.2 : 0;
-	if (self.scrollableView != nil) {
-        CGRect rect = [self scrollView].frame;
-        rect.origin.y = 0;
-        [self scrollView].frame = rect;
-        [UIView animateWithDuration:interval animations:^{
+	if (self.scrollableView) {
+        [self stopAnimateWithTimer];
+        if (animated) {
+            [self startAnimateWithTimerExpand:YES animateAlpha:NO];
+        } else {
             self.lastContentOffset = 0;
-            [self scrollWithDelta:-self.navbarHeight];
-        }];
-	}
+            CGRect frame = self.navigationController.navigationBar.frame;
+            [self scrollWithDelta:frame.origin.y - self.statusBar];
+        }
+    }
+}
+
+- (void)hideNavbar
+{
+    [self hideNavBarAnimated:YES];
+}
+
+- (void)hideNavBarAnimated:(BOOL)animated
+{
+	if (self.scrollableView) {
+        [self stopAnimateWithTimer];
+        if (animated) {
+            [self startAnimateWithTimerExpand:NO animateAlpha:NO];
+        } else {
+            self.lastContentOffset = 0;
+            CGRect frame = self.navigationController.navigationBar.frame;
+            [self scrollWithDelta:frame.origin.y + self.deltaLimit];
+        }
+    }
 }
 
 - (void)showNavbar
@@ -204,12 +224,13 @@ static float kAnimationOffsetThreshold = 1.0;
     
     if ([gesture state] == UIGestureRecognizerStateBegan) {
         [self stopAnimateWithTimer];
+        self.animateAlpha = YES;
     }
 	
 	[self scrollWithDelta:kPanGestureSensitivity * delta];
     
 	if ([gesture state] == UIGestureRecognizerStateEnded) {
-		// Reset the nav bar if the scroll is partial
+		// Continue expand/collapse if the scroll is partial
 		[self checkForPartialCollapse:(translation.y < 0)];
         self.lastContentOffset = 0;
 	}
@@ -325,14 +346,14 @@ static float kAnimationOffsetThreshold = 1.0;
     
 	// Collapse
 	if (collapse && !self.collapsed) {
-        [self startAnimateWithTimerExpand:NO];
+        [self startAnimateWithTimerExpand:NO animateAlpha:YES];
 	} else if (expand && !self.expanded) {
 		// Expand
-        [self startAnimateWithTimerExpand:YES];
+        [self startAnimateWithTimerExpand:YES animateAlpha:YES];
 	}
 }
 
-- (void)startAnimateWithTimerExpand:(BOOL)expand
+- (void)startAnimateWithTimerExpand:(BOOL)expand animateAlpha:(BOOL)animateAlpha
 {
     [self stopAnimateWithTimer];
     
@@ -342,6 +363,8 @@ static float kAnimationOffsetThreshold = 1.0;
     } else {
         self.animationDelta = frame.origin.y + self.deltaLimit;
     }
+    
+    self.animateAlpha = animateAlpha;
     
     // Using CADisplayLink to schedule animation timer
     self.animationTimer = [CADisplayLink displayLinkWithTarget:self
@@ -361,14 +384,17 @@ static float kAnimationOffsetThreshold = 1.0;
 
 - (void)updateAnimation:(id)sender
 {
-    if (self.animationTimestamp < 0) {
-        self.animationTimestamp = self.animationTimer.timestamp;
+    float oldTimestamp = self.animationTimestamp;
+    self.animationTimestamp = self.animationTimer.timestamp;
+    
+    if (oldTimestamp < 0) {
         return;
     }
     
-    float dt = self.animationTimer.timestamp - self.animationTimestamp;
-    float delta;
+    float dt = self.animationTimestamp - oldTimestamp;
+//    NSLog(@"[AMScrollingNavbarViewController] dt = %f", dt);
     
+    float delta;
     if (ABS(self.animationDelta) < kAnimationOffsetThreshold) {
         delta = self.animationDelta;
         [self stopAnimateWithTimer];
@@ -412,16 +438,18 @@ static float kAnimationOffsetThreshold = 1.0;
 
 	[self.overlay setAlpha:1 - alpha];
 
-	[self.navigationItem.leftBarButtonItems enumerateObjectsUsingBlock:^(UIBarButtonItem* obj, NSUInteger idx, BOOL *stop) {
-		obj.customView.alpha = alpha;
-	}];
-    self.navigationItem.leftBarButtonItem.customView.alpha = alpha;
-	[self.navigationItem.rightBarButtonItems enumerateObjectsUsingBlock:^(UIBarButtonItem* obj, NSUInteger idx, BOOL *stop) {
-		obj.customView.alpha = alpha;
-	}];
-    self.navigationItem.rightBarButtonItem.customView.alpha = alpha;
-	self.navigationItem.titleView.alpha = alpha;
-	self.navigationController.navigationBar.tintColor = [self.navigationController.navigationBar.tintColor colorWithAlphaComponent:alpha];
+    if (self.animateAlpha) {
+        [self.navigationItem.leftBarButtonItems enumerateObjectsUsingBlock:^(UIBarButtonItem* obj, NSUInteger idx, BOOL *stop) {
+            obj.customView.alpha = alpha;
+        }];
+        self.navigationItem.leftBarButtonItem.customView.alpha = alpha;
+        [self.navigationItem.rightBarButtonItems enumerateObjectsUsingBlock:^(UIBarButtonItem* obj, NSUInteger idx, BOOL *stop) {
+            obj.customView.alpha = alpha;
+        }];
+        self.navigationItem.rightBarButtonItem.customView.alpha = alpha;
+        self.navigationItem.titleView.alpha = alpha;
+        self.navigationController.navigationBar.tintColor = [self.navigationController.navigationBar.tintColor colorWithAlphaComponent:alpha];
+    }
 }
 
 @end

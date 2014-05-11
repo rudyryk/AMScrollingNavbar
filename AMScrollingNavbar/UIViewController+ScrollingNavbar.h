@@ -47,6 +47,20 @@
  */
 - (void)showNavBarAnimated:(BOOL)animated;
 
+/** Navbar slide up
+ *
+ * Manually hide the navbar
+ */
+- (void)hideNavbar;
+
+/** Navbar slide up
+ *
+ * Manually hide the navbar
+ *
+ * @param animated Animates the navbar scrolling
+ */
+- (void)hideNavBarAnimated:(BOOL)animated;
+
 /** Remove the scrollview tracking
  *
  * Use this method to stop following the navbar
