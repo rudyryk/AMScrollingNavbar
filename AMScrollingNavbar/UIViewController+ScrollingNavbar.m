@@ -259,8 +259,6 @@ static float kAnimationOffsetThreshold = 1.0;
 		}
 		
 		frame.origin.y = MAX(-self.deltaLimit, frame.origin.y - delta);
-		self.navigationController.navigationBar.frame = frame;
-		
         
 		if (ABS(frame.origin.y + self.deltaLimit) < kAnimationOffsetThreshold) {
             frame.origin.y = -self.deltaLimit;
@@ -268,14 +266,14 @@ static float kAnimationOffsetThreshold = 1.0;
 			self.expanded = NO;
 			self.delayDistance = self.maxDelay;
 		}
-        
+
+        self.navigationController.navigationBar.frame = frame;
         [[self scrollView] setShowsVerticalScrollIndicator:NO];
         
         [self updateSizingWithDelta:delta];
         [self restoreContentoffset:delta];
 	}
-	
-	if (delta < 0) {
+	else if (delta < 0) {
 		if (self.expanded) {
             [[self scrollView] setShowsVerticalScrollIndicator:YES];
 			return;
@@ -297,7 +295,6 @@ static float kAnimationOffsetThreshold = 1.0;
 			delta = frame.origin.y - self.statusBar;
 		}
 		frame.origin.y = MIN(self.statusBar/* 20? */, frame.origin.y - delta);
-		self.navigationController.navigationBar.frame = frame;
 		
 		if (ABS(frame.origin.y - self.statusBar) < kAnimationOffsetThreshold) {
             frame.origin.y = self.statusBar;
@@ -305,6 +302,7 @@ static float kAnimationOffsetThreshold = 1.0;
 			self.collapsed = NO;
 		}
         
+        self.navigationController.navigationBar.frame = frame;
         [[self scrollView] setShowsVerticalScrollIndicator:NO];
         
         [self updateSizingWithDelta:delta];
@@ -401,6 +399,7 @@ static float kAnimationOffsetThreshold = 1.0;
     } else {
         delta = self.animationDelta * MIN(1.0, kAnimationSpeedCoeff * dt);
     }
+//    NSLog(@"[AMScrollingNavbarViewController] delta: %f", delta);
     
     self.animationDelta -= delta;
     [self scrollWithDelta:delta];
@@ -434,9 +433,12 @@ static float kAnimationOffsetThreshold = 1.0;
     
 	// Change the alpha channel of every item on the navbr. The overlay will appear, while the other objects will disappear, and vice versa
     float x = 1.0 - (frame.origin.y + self.deltaLimit) / frame.size.height;
-	float alpha = MIN(MAX(0, 1.0 - 2*x), 1.0);
+	float alpha = MIN(MAX(0, 1.0 - 2.0 * x), 1.0);
 
 	[self.overlay setAlpha:1 - alpha];
+    self.overlay.userInteractionEnabled = (alpha < 1.0);
+    
+//    NSLog(@"[AMScrollingNavbarViewController] alpha: %f", alpha);
 
     if (self.animateAlpha) {
         [self.navigationItem.leftBarButtonItems enumerateObjectsUsingBlock:^(UIBarButtonItem* obj, NSUInteger idx, BOOL *stop) {
