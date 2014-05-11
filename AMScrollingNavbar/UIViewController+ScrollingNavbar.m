@@ -459,6 +459,8 @@ static float kAnimationOffsetThreshold = 1.0;
     
 //    NSLog(@"[AMScrollingNavbarViewController] alpha: %f", alpha);
 
+    // We have to keep alpha untouched on screen transitions, as well is alpha is updated
+    // automatically on push- or pop- view controllers animations.
     if (self.animateAlpha) {
         [self.navigationItem.leftBarButtonItems enumerateObjectsUsingBlock:^(UIBarButtonItem* obj, NSUInteger idx, BOOL *stop) {
             obj.customView.alpha = alpha;
