@@ -123,8 +123,7 @@ static float kAnimationOffsetThreshold = 1.0;
 
 - (void)didBecomeActive:(id)sender
 {
-    [self stopAnimateWithTimer];
-    [self showNavbar];
+    [self startAnimateWithTimerExpand:YES animateAlpha:YES];
 }
 
 - (void)willAnimateRotationToInterfaceOrientation:(UIInterfaceOrientation)toInterfaceOrientation duration:(NSTimeInterval)duration
@@ -175,6 +174,11 @@ static float kAnimationOffsetThreshold = 1.0;
     }
 }
 
+- (void)showNavbar
+{
+    [self showNavBarAnimated:YES];
+}
+
 - (void)showNavBarAnimated:(BOOL)animated
 {
     if (self.scrollableView) {
@@ -206,11 +210,6 @@ static float kAnimationOffsetThreshold = 1.0;
             [self scrollWithDelta:frame.origin.y + self.deltaLimit];
         }
     }
-}
-
-- (void)showNavbar
-{
-    [self showNavBarAnimated:YES];
 }
 
 - (BOOL)gestureRecognizer:(UIGestureRecognizer *)gestureRecognizer shouldRecognizeSimultaneouslyWithGestureRecognizer:(UIGestureRecognizer *)otherGestureRecognizer
@@ -373,6 +372,7 @@ static float kAnimationOffsetThreshold = 1.0;
 {
     [self stopAnimateWithTimer];
     
+    self.lastContentOffset = 0;
     self.delayDistance = 0;
     self.animateAlpha = animateAlpha;
     
